@@ -21,7 +21,7 @@ async def download_pdf(
     today_date = datetime.now().strftime("%d-%m-%Y")
     
     # ফাইলের নামের সাথে ডেট যোগ করা
-    final_filename = f"Download_PDM_Bulletin_for_WB_Live_Tender_Bulletin_{today_date}.pdf"
+    final_filename = f"WB Live Tender Finder Bulletin_{today_date}.pdf"
 
     async with async_playwright() as p:
         # ১. টেক্সট ও ফন্ট শার্প করার সেটিংস
