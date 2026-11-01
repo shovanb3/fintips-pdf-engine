@@ -1,13 +1,14 @@
+# main.py - High-Definition Retina Vector PDF Engine
 import os
 import urllib.parse
 from fastapi import FastAPI, Response, HTTPException
 from playwright.async_api import async_playwright
 
-app = FastAPI(title="FinTips Vector PDF Engine")
+app = FastAPI(title="FinTips High-Definition PDF Engine")
 
 @app.get("/")
 def home():
-    return {"status": "active", "service": "FinTips Headless Chrome PDF Generator"}
+    return {"status": "active", "service": "FinTips Retina Chrome PDF Generator"}
 
 @app.get("/download-pdf")
 async def generate_pdf(url: str):
@@ -17,27 +18,44 @@ async def generate_pdf(url: str):
     decoded_url = urllib.parse.unquote(url)
     
     async with async_playwright() as p:
-        # ব্যাকগ্রাউন্ডে আসল ক্রোম চালু করা
         browser = await p.chromium.launch(
             headless=True,
-            args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
+            args=[
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage",
+                "--font-render-hinting=medium",
+                "--enable-font-antialiasing"
+            ]
         )
-        # মোবাইল বা ডেস্কটপ ভিউপোর্ট সেট করা
-        page = await browser.new_page(viewport={"width": 1280, "height": 800})
         
-        # পেজ সম্পূর্ণ লোড হওয়া ও নেটওয়ার্ক শান্ত হওয়া পর্যন্ত অপেক্ষা
+        # ১. রেটিনা ২এক্স হাই-রেজোলিউশন ভিউপোর্ট (ফন্ট একদম ক্রিস্টাল শার্প করার জন্য)
+        page = await browser.new_page(
+            viewport={"width": 1600, "height": 1000},
+            device_scale_factor=2
+        )
+        
+        # প্রিন্ট মোড সক্রিয় করা
+        await page.emulate_media(media="print")
+        
+        # পেজ লোড হওয়া
         await page.goto(decoded_url, wait_until="networkidle", timeout=45000)
         
-        # ১০০% ক্রিস্টাল ক্লিয়ার A4 Landscape ভেক্টর প্রিন্ট তৈরি
+        # ২. গুগল ফন্ট (Hind Siliguri) ১০০% লোড হওয়া নিশ্চিত করার নির্দেশ
+        await page.evaluate("document.fonts.ready")
+        
+        # ফন্ট রেন্ডারিং সেটেল হওয়ার জন্য ৪০০ মিলি-সেকেন্ড অপেক্ষা
+        await page.wait_for_timeout(400)
+        
+        # ৩. নিখুঁত A4 Landscape ভেক্টর PDF জেনারেট (কোনো লেখা স্ট্রেচ হবে না)
         pdf_bytes = await page.pdf(
             format="A4",
             landscape=True,
             print_background=True,
-            margin={"top": "4mm", "bottom": "5mm", "left": "5mm", "right": "5mm"}
+            prefer_css_page_size=True
         )
         await browser.close()
         
-        # সরাসরি ক্যান্ডিডেটের ফোনে ফাইল ডাউনলোড পুশ
         return Response(
             content=pdf_bytes,
             media_type="application/pdf",
