@@ -20,11 +20,11 @@ async def download_pdf(
     # আজকের তারিখ তৈরি করা (দিন-মাস-বছর ফরম্যাটে, যেমন: 01-11-2024)
     today_date = datetime.now().strftime("%d-%m-%Y")
     
-    # ফাইলের নামের সাথে আজকের তারিখ আন্ডারস্কোর (_) দিয়ে যোগ করা
-    final_filename = f"WB Live Tender Finder Bulletin_{today_date}.pdf"
+    # ফাইলের নামের সাথে ডেট যোগ করা
+    final_filename = f"Download_PDM_Bulletin_for_WB_Live_Tender_Bulletin_{today_date}.pdf"
 
     async with async_playwright() as p:
-        # ১. টেক্সট ও ফন্ট ঝকঝকে ও গাঢ় করার সেটিংস
+        # ১. টেক্সট ও ফন্ট শার্প করার সেটিংস
         browser = await p.chromium.launch(
             headless=True, 
             args=[
@@ -35,8 +35,9 @@ async def download_pdf(
             ]
         )
         
-        # ২. রেটিনা ডিসপ্লে কোয়ালিটি (ঝাপসা ভাব দূর করার জন্য)
+        # ২. ল্যান্ডস্কেপ ভিউপোর্ট এবং রেটিনা স্কেলিং
         context = await browser.new_context(
+            viewport={"width": 1920, "height": 1080}, # ল্যান্ডস্কেপ ভিউ
             device_scale_factor=2
         )
         page = await context.new_page()
@@ -45,11 +46,12 @@ async def download_pdf(
             await page.emulate_media(media="screen")
             await page.goto(url, wait_until="networkidle", timeout=60000)
 
-            # পারফেক্ট ক্রিস্টাল-ক্লিয়ার ভেক্টর PDF তৈরি
+            # পারফেক্ট ল্যান্ডস্কেপ (Landscape) PDF প্রিন্ট
             pdf_bytes = await page.pdf(
                 format="A4",
+                landscape=True,                          # <-- এটি PDF-কে Landscape (আড়াআড়ি) করবে
                 print_background=True,
-                prefer_css_page_size=True,
+                prefer_css_page_size=False,             # ফিক্সড ল্যান্ডস্কেপ বাধ্য করার জন্য False
                 margin={"top": "10mm", "bottom": "10mm", "left": "10mm", "right": "10mm"}
             )
         except Exception as e:
@@ -58,7 +60,7 @@ async def download_pdf(
 
         await browser.close()
 
-        # ডায়নামিক তারিখসহ ফাইলে ডাউনলোড করানো
+        # ডায়নামিক নাম এবং ল্যান্ডস্কেপ ফাইল রিটার্ন
         return Response(
             content=pdf_bytes,
             media_type="application/pdf",
