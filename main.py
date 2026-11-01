@@ -18,54 +18,72 @@ async def download_pdf(
     if not url:
         raise HTTPException(status_code=400, detail="URL parameter is required")
 
-    # আজকের তারিখ দিয়ে নাম তৈরি
     today_date = datetime.now().strftime("%d-%m-%Y")
     final_filename = f"Download_PDM_Bulletin_for_WB_Live_Tender_Bulletin_{today_date}.pdf"
 
     async with async_playwright() as p:
+        # সুপার শার্প ফন্ট ইঞ্জিন এনাবল করা
         browser = await p.chromium.launch(
             headless=True, 
             args=[
                 "--no-sandbox", 
                 "--disable-setuid-sandbox",
-                "--font-render-hinting=none",
+                "--font-render-hinting=medium",       # ফন্টের এজ স্পষ্ট করবে
+                "--enable-font-antialiasing",
                 "--force-color-profile=srgb",
                 "--hide-scrollbars"
             ]
         )
         
+        # A4 ল্যান্ডস্কেপের নিখুঁত আসপেক্ট রেশিও এবং স্কেলিং
         context = await browser.new_context(
-            viewport={"width": 1920, "height": 1080},
-            device_scale_factor=2
+            viewport={"width": 1400, "height": 900},   # A4 ল্যান্ডস্কেপের সাথে পারফেক্ট ম্যাচ
+            device_scale_factor=1                      # স্কেলিং ডিসটরশন বন্ধ
         )
         page = await context.new_page()
 
         try:
-            # পেজ লোড হওয়া
             await page.goto(url, wait_until="networkidle", timeout=90000)
 
-            # অপ্রয়োজনীয় হেডার বাটন ও বর্ডার বাদ দেওয়া
+            # ফন্টকে ক্রিস্টাল ক্লিয়ার, গাঢ় ও শার্প করার বিশেষ CSS
             css_styles = """
-                body, html { box-shadow: none !important; margin: 0 !important; padding: 0 !important; background: #fff !important; }
-                header, nav, .no-print, [class*="header"], [class*="navbar"] { display: none !important; }
-                * { -webkit-print-color-adjust: exact !important; }
+                body, html { 
+                    box-shadow: none !important; 
+                    margin: 0 !important; 
+                    padding: 0 !important; 
+                    background: #fff !important; 
+                    -webkit-font-smoothing: antialiased !important;
+                    -moz-osx-font-smoothing: grayscale !important;
+                    text-rendering: optimizeLegibility !important;
+                }
+                header, nav, .no-print, [class*="header"], [class*="navbar"] { 
+                    display: none !important; 
+                }
+                * { 
+                    -webkit-print-color-adjust: exact !important;
+                    color-adjust: exact !important;
+                }
+                /* টেবিল ও ফন্ট যেন হালকা না হয়ে স্পষ্ট কালো থাকে */
+                table, th, td, p, span, div {
+                    text-shadow: none !important;
+                }
             """
             await page.add_style_tag(content=css_styles)
 
-            # সহজ ও এরর-মুক্ত অটো-স্ক্রল (যাতে সব ৬০-৬৫ পেজ লোড হয়)
+            # সম্পূর্ণ পেজ লোড নিশ্চিত করতে অটো-স্ক্রল
             for _ in range(15):
                 await page.mouse.wheel(0, 3000)
                 await asyncio.sleep(0.5)
 
-            # স্ক্রল শেষে পেজ ঠিক হতে ১ সেকেন্ড অপেক্ষা
             await asyncio.sleep(1)
 
-            # মিনিমাম ৩ মিমি (3mm) মার্জিন সহ ল্যান্ডস্কেপ PDF তৈরি
+            # আসল ভেক্টর প্রিন্ট
             pdf_bytes = await page.pdf(
                 format="A4",
                 landscape=True,
                 print_background=True,
                 prefer_css_page_size=False,
+                scale=1.0,                               # জোর করে ছোট হওয়া বন্ধ করবে (ঝাপসা দূর হবে)
                 margin={"top": "3mm", "bottom": "3mm", "left": "3mm", "right": "3mm"}
             )
         except Exception as e:
