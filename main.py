@@ -1,4 +1,5 @@
 import os
+import asyncio
 from datetime import datetime
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import Response
@@ -17,57 +18,52 @@ async def download_pdf(
     if not url:
         raise HTTPException(status_code=400, detail="URL parameter is required")
 
-    # আজকের তারিখ তৈরি করা (দিন-মাস-বছর ফরম্যাটে, যেমন: 01-11-2024)
+    # আজকের তারিখ দিয়ে নাম তৈরি
     today_date = datetime.now().strftime("%d-%m-%Y")
-    
-    # ফাইলের নামের সাথে ডেট যোগ করা
-    final_filename = f"WB Live Tender Finder Bulletin_{today_date}.pdf"
+    final_filename = f"Download_PDM_Bulletin_for_WB_Live_Tender_Bulletin_{today_date}.pdf"
 
     async with async_playwright() as p:
-        # ১. টেক্সট ও ফন্ট শার্প করার সেটিংস
         browser = await p.chromium.launch(
             headless=True, 
             args=[
                 "--no-sandbox", 
                 "--disable-setuid-sandbox",
                 "--font-render-hinting=none",
-                "--force-color-profile=srgb"
+                "--force-color-profile=srgb",
+                "--hide-scrollbars"             # ব্রাউজারের স্ক্রলবারের দাগ দূর করবে
             ]
         )
         
-        # ২. ল্যান্ডস্কেপ ভিউপোর্ট এবং রেটিনা স্কেলিং
         context = await browser.new_context(
-            viewport={"width": 1920, "height": 1080}, # ল্যান্ডস্কেপ ভিউ
+            viewport={"width": 1920, "height": 1080},
             device_scale_factor=2
         )
         page = await context.new_page()
 
         try:
-            await page.emulate_media(media="screen")
-            await page.goto(url, wait_until="networkidle", timeout=60000)
+            # পেজে যাওয়া এবং লোড হওয়া
+            await page.goto(url, wait_until="networkidle", timeout=90000)
 
-            # পারফেক্ট ল্যান্ডস্কেপ (Landscape) PDF প্রিন্ট
-            pdf_bytes = await page.pdf(
-                format="A4",
-                landscape=True,                          # <-- এটি PDF-কে Landscape (আড়াআড়ি) করবে
-                print_background=True,
-                prefer_css_page_size=False,             # ফিক্সড ল্যান্ডস্কেপ বাধ্য করার জন্য False
-                margin={"top": "10mm", "bottom": "10mm", "left": "10mm", "right": "10mm"}
-            )
-        except Exception as e:
-            await browser.close()
-            raise HTTPException(status_code=500, detail=f"Failed to generate PDF: {str(e)}")
+            # সাইডের অতিরিক্ত ছায়া ও মার্জিন রিমুভ এবং ওপরের বোতাম বার মুছে ফেলা
+            await page.add_style_tag(content="""
+                body, html { 
+                    box-shadow: none !important; 
+                    margin: 0 !important; 
+                    padding: 0 !important; 
+                    background: #ffffff !important;
+                }
+                header, nav, .no-print, [class*="header"], [class*="navbar"] { 
+                    display: none !important; 
+                }
+                * { 
+                    -webkit-print-color-adjust: exact !important; 
+                }
+            """)
 
-        await browser.close()
-
-        # ডায়নামিক নাম এবং ল্যান্ডস্কেপ ফাইল রিটার্ন
-        return Response(
-            content=pdf_bytes,
-            media_type="application/pdf",
-            headers={"Content-Disposition": f'attachment; filename="{final_filename}"'}
-        )
-
-if __name__ == "__main__":
-    import uvicorn
-    port = int(os.environ.get("PORT", 10000))
-    uvicorn.run("main:app", host="0.0.0.0", port=port)
+            # সম্পূর্ণ ৬০-৬৫টি পেজের সব টেন্ডার লোড করার জন্য অটো-স্ক্রল
+            await page.evaluate("""async () => {
+                await new Promise((resolve) => {
+                    var totalHeight = 0;
+                    var distance = 800;
+                    var timer = setInterval(() => {
+                        var sc
