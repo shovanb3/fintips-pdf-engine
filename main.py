@@ -64,3 +64,82 @@ async def generate_pdf(url: str):
                 "Cache-Control": "no-cache"
             }
         )
+
+
+# main.py - Ultra-Fast Persistent Chromium PDF Engine
+import os
+import urllib.parse
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, Response, HTTPException
+from playwright.async_api import async_playwright
+
+browser_instance = None
+playwright_manager = None
+
+# সার্ভার চালু হওয়ার সময় একবারই ক্রোম অন হবে (প্রতি রিকোয়েস্টে নতুন করে অন হবে না)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global browser_instance, playwright_manager
+    playwright_manager = await async_playwright().start()
+    browser_instance = await playwright_manager.chromium.launch(
+        headless=True,
+        args=[
+            "--no-sandbox",
+            "--disable-setuid-sandbox",
+            "--disable-dev-shm-usage",
+            "--font-render-hinting=medium",
+            "--enable-font-antialiasing"
+        ]
+    )
+    yield
+    if browser_instance:
+        await browser_instance.close()
+    if playwright_manager:
+        await playwright_manager.stop()
+
+app = FastAPI(lifespan=lifespan)
+
+@app.get("/")
+def home():
+    return {"status": "active", "service": "FinTips Turbo PDF Generator"}
+
+@app.get("/download-pdf")
+async def generate_pdf(url: str):
+    if not url:
+        raise HTTPException(status_code=400, detail="URL is missing")
+    
+    decoded_url = urllib.parse.unquote(url)
+    
+    # ব্যাকগ্রাউন্ডে চালু থাকা ক্রোম ব্রাউজারে নিমেষে একটি নতুন ট্যাব খোলা
+    context = await browser_instance.new_context(
+        viewport={"width": 1600, "height": 1000},
+        device_scale_factor=2
+    )
+    page = await context.new_page()
+    await page.emulate_media(media="print")
+    
+    try:
+        # অযথা দেরি না করে domcontentloaded এ দ্রুত পেজ নেওয়া
+        await page.goto(decoded_url, wait_until="domcontentloaded", timeout=30000)
+        
+        # ফন্ট লোড নিশ্চিত করা
+        await page.evaluate("document.fonts.ready")
+        
+        # দ্রুত ভেক্টর PDF জেনারেট
+        pdf_bytes = await page.pdf(
+            format="A4",
+            landscape=True,
+            print_background=True,
+            prefer_css_page_size=True
+        )
+    finally:
+        await context.close() # শুধু ট্যাবটি বন্ধ হবে, ক্রোম চালু থাকবে
+        
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": "attachment; filename=WB_Tender_Bulletin.pdf",
+            "Cache-Control": "no-cache"
+        }
+    )
