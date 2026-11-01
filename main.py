@@ -19,7 +19,7 @@ async def download_pdf(
         raise HTTPException(status_code=400, detail="URL parameter is required")
 
     today_date = datetime.now().strftime("%d-%m-%Y")
-    final_filename = f"Download_PDM_Bulletin_for_WB_Live_Tender_Bulletin_{today_date}.pdf"
+    final_filename = f"WB_Live_Tender_Bulletin_{today_date}.pdf"
 
     async with async_playwright() as p:
         # সুপার শার্প ফন্ট ইঞ্জিন এনাবল করা
