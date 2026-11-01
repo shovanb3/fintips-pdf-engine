@@ -1,4 +1,5 @@
 import os
+from datetime import datetime
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import Response
 from playwright.async_api import async_playwright
@@ -11,18 +12,19 @@ def home():
 
 @app.get("/download-pdf")
 async def download_pdf(
-    url: str = Query(..., description="Target web page URL"),
-    filename: str = Query("Tender_Bulletin.pdf", description="Custom name for PDF file")  # ডিফল্ট নাম
+    url: str = Query(..., description="Target web page URL")
 ):
     if not url:
         raise HTTPException(status_code=400, detail="URL parameter is required")
 
-    # নামের শেষে .pdf না থাকলে স্বয়ংক্রিয়ভাবে যোগ হবে
-    if not filename.endswith(".pdf"):
-        filename += ".pdf"
+    # আজকের তারিখ তৈরি করা (দিন-মাস-বছর ফরম্যাটে, যেমন: 01-11-2024)
+    today_date = datetime.now().strftime("%d-%m-%Y")
+    
+    # ফাইলের নামের সাথে আজকের তারিখ আন্ডারস্কোর (_) দিয়ে যোগ করা
+    final_filename = f"WB Live Tender Finder Bulletin_{today_date}.pdf"
 
     async with async_playwright() as p:
-        # ফন্ট ঝকঝকে ও শার্প করার জন্য সেটিংস
+        # ১. টেক্সট ও ফন্ট ঝকঝকে ও গাঢ় করার সেটিংস
         browser = await p.chromium.launch(
             headless=True, 
             args=[
@@ -33,7 +35,7 @@ async def download_pdf(
             ]
         )
         
-        # রেটিনা হাই-রেজোলিউশন মোড (ঝাপসা দূর করার জন্য)
+        # ২. রেটিনা ডিসপ্লে কোয়ালিটি (ঝাপসা ভাব দূর করার জন্য)
         context = await browser.new_context(
             device_scale_factor=2
         )
@@ -56,11 +58,11 @@ async def download_pdf(
 
         await browser.close()
 
-        # ডায়নামিক ফাইলের নাম দিয়ে ডাউনলোড করানো
+        # ডায়নামিক তারিখসহ ফাইলে ডাউনলোড করানো
         return Response(
             content=pdf_bytes,
             media_type="application/pdf",
-            headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+            headers={"Content-Disposition": f'attachment; filename="{final_filename}"'}
         )
 
 if __name__ == "__main__":
