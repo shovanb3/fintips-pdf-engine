@@ -30,7 +30,7 @@ async def download_pdf(
                 "--disable-setuid-sandbox",
                 "--font-render-hinting=none",
                 "--force-color-profile=srgb",
-                "--hide-scrollbars"             # ব্রাউজারের স্ক্রলবারের দাগ দূর করবে
+                "--hide-scrollbars"
             ]
         )
         
@@ -41,29 +41,46 @@ async def download_pdf(
         page = await context.new_page()
 
         try:
-            # পেজে যাওয়া এবং লোড হওয়া
+            # পেজ লোড হওয়া
             await page.goto(url, wait_until="networkidle", timeout=90000)
 
-            # সাইডের অতিরিক্ত ছায়া ও মার্জিন রিমুভ এবং ওপরের বোতাম বার মুছে ফেলা
-            await page.add_style_tag(content="""
-                body, html { 
-                    box-shadow: none !important; 
-                    margin: 0 !important; 
-                    padding: 0 !important; 
-                    background: #ffffff !important;
-                }
-                header, nav, .no-print, [class*="header"], [class*="navbar"] { 
-                    display: none !important; 
-                }
-                * { 
-                    -webkit-print-color-adjust: exact !important; 
-                }
-            """)
+            # অপ্রয়োজনীয় হেডার বাটন ও বর্ডার বাদ দেওয়া
+            css_styles = """
+                body, html { box-shadow: none !important; margin: 0 !important; padding: 0 !important; background: #fff !important; }
+                header, nav, .no-print, [class*="header"], [class*="navbar"] { display: none !important; }
+                * { -webkit-print-color-adjust: exact !important; }
+            """
+            await page.add_style_tag(content=css_styles)
 
-            # সম্পূর্ণ ৬০-৬৫টি পেজের সব টেন্ডার লোড করার জন্য অটো-স্ক্রল
-            await page.evaluate("""async () => {
-                await new Promise((resolve) => {
-                    var totalHeight = 0;
-                    var distance = 800;
-                    var timer = setInterval(() => {
-                        var sc
+            # সহজ ও এরর-মুক্ত অটো-স্ক্রল (যাতে সব ৬০-৬৫ পেজ লোড হয়)
+            for _ in range(15):
+                await page.mouse.wheel(0, 3000)
+                await asyncio.sleep(0.5)
+
+            # স্ক্রল শেষে পেজ ঠিক হতে ১ সেকেন্ড অপেক্ষা
+            await asyncio.sleep(1)
+
+            # মিনিমাম ৩ মিমি (3mm) মার্জিন সহ ল্যান্ডস্কেপ PDF তৈরি
+            pdf_bytes = await page.pdf(
+                format="A4",
+                landscape=True,
+                print_background=True,
+                prefer_css_page_size=False,
+                margin={"top": "3mm", "bottom": "3mm", "left": "3mm", "right": "3mm"}
+            )
+        except Exception as e:
+            await browser.close()
+            raise HTTPException(status_code=500, detail=f"Failed to generate PDF: {str(e)}")
+
+        await browser.close()
+
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{final_filename}"'}
+        )
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", 10000))
+    uvicorn.run("main:app", host="0.0.0.0", port=port)
